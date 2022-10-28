@@ -35,53 +35,64 @@
 
 #include "obstacle_detector/obstacle_tracker.h"
 
+using namespace std::chrono_literals;
 using namespace obstacle_detector;
 using namespace arma;
 using namespace std;
 
-ObstacleTracker::ObstacleTracker(ros::NodeHandle& nh, ros::NodeHandle& nh_local) : nh_(nh), nh_local_(nh_local) {
+ObstacleTracker::ObstacleTracker(std::shared_ptr<rclcpp::Node> nh, std::shared_ptr<rclcpp::Node> nh_local){
+  nh_ = nh;
+  nh_local_ = nh_local;
   p_active_ = false;
+//   params_srv_ = nh_->create_service<std_srvs::srv::Empty>("params", 
+//                                                           std::bind(
+//                                                                 &ObstacleTracker::updateParams,
+//                                                                 this, 
+//                                                                 std::placeholders::_1,
+//                                                                 std::placeholders::_2,
+//                                                                 std::placeholders::_3
+//                                                           ));
 
-  timer_ = nh_.createTimer(ros::Duration(1.0), &ObstacleTracker::timerCallback, this, false, false);
-  params_srv_ = nh_local_.advertiseService("params", &ObstacleTracker::updateParams, this);
-
+  timer_ = nh_->create_wall_timer(1000ms, std::bind(&ObstacleTracker::timerCallback, this));
   initialize();
 }
 
 ObstacleTracker::~ObstacleTracker() {
-  nh_local_.deleteParam("active");
-  nh_local_.deleteParam("copy_segments");
-  nh_local_.deleteParam("compensate_robot_velocity");
-
-  nh_local_.deleteParam("loop_rate");
-  nh_local_.deleteParam("tracking_duration");
-  nh_local_.deleteParam("min_correspondence_cost");
-  nh_local_.deleteParam("std_correspondence_dev");
-  nh_local_.deleteParam("process_variance");
-  nh_local_.deleteParam("process_rate_variance");
-  nh_local_.deleteParam("measurement_variance");
-
-  nh_local_.deleteParam("frame_id");
 }
 
-bool ObstacleTracker::updateParams(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res) {
+void ObstacleTracker::updateParamsUtil(){
   bool prev_active = p_active_;
 
-  nh_local_.param<bool>("active", p_active_, true);
-  nh_local_.param<bool>("copy_segments", p_copy_segments_, true);
-  nh_local_.param<bool>("compensate_robot_velocity", p_compensate_robot_velocity_, false); // Before using this, consider using pointcloud input from map frame instead of base_link frame
-  nh_local_.param<double>("sensor_rate", p_sensor_rate_, 10.0);
-  nh_local_.param<double>("loop_rate", p_loop_rate_, 100.0);
+  nh_->declare_parameter("active", rclcpp::PARAMETER_BOOL);
+  nh_->declare_parameter("copy_segments", rclcpp::PARAMETER_BOOL);
+  // Before using compensate_robot_velocity, consider using pointcloud input from map frame instead of base_link frame
+  nh_->declare_parameter("compensate_robot_velocity", rclcpp::PARAMETER_BOOL);
+  nh_->declare_parameter("sensor_rate", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("loop_rate", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("frame_id", rclcpp::PARAMETER_STRING);
+
+  nh_->declare_parameter("tracking_duration", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("min_correspondence_cost", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("std_correspondence_dev", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("process_variance", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("process_rate_variance", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("measurement_variance", rclcpp::PARAMETER_DOUBLE);
+
+  nh_->get_parameter_or("active", p_active_, true);
+  nh_->get_parameter_or("copy_segments", p_copy_segments_, true);
+  nh_->get_parameter_or("compensate_robot_velocity", p_compensate_robot_velocity_, false);
+  nh_->get_parameter_or("sensor_rate", p_sensor_rate_, 10.0);
+  nh_->get_parameter_or("loop_rate", p_loop_rate_, 100.0);
+  nh_->get_parameter_or("frame_id", p_frame_id_, string("map"));
+
+  nh_->get_parameter_or("tracking_duration", p_tracking_duration_, 2.0);
+  nh_->get_parameter_or("min_correspondence_cost", p_min_correspondence_cost_, 0.3);
+  nh_->get_parameter_or("std_correspondence_dev", p_std_correspondence_dev_, 0.15);
+  nh_->get_parameter_or("process_variance", p_process_variance_, 0.01);
+  nh_->get_parameter_or("process_rate_variance", p_process_rate_variance_, 0.1);
+  nh_->get_parameter_or("measurement_variance", p_measurement_variance_, 1.0);
+
   p_sampling_time_ = 1.0 / p_loop_rate_;
-
-  nh_local_.param<double>("tracking_duration", p_tracking_duration_, 2.0);
-  nh_local_.param<double>("min_correspondence_cost", p_min_correspondence_cost_, 0.3);
-  nh_local_.param<double>("std_correspondence_dev", p_std_correspondence_dev_, 0.15);
-  nh_local_.param<double>("process_variance", p_process_variance_, 0.01);
-  nh_local_.param<double>("process_rate_variance", p_process_rate_variance_, 0.1);
-  nh_local_.param<double>("measurement_variance", p_measurement_variance_, 1.0);
-
-  nh_local_.param<string>("frame_id", p_frame_id_, string("map"));
   obstacles_.header.frame_id = p_frame_id_;
 
   TrackedCircleObstacle::setSamplingTime(p_sampling_time_);
@@ -91,56 +102,60 @@ bool ObstacleTracker::updateParams(std_srvs::Empty::Request &req, std_srvs::Empt
   TrackedSegmentObstacle::setCounterSize(static_cast<int>(p_loop_rate_ * p_tracking_duration_));
   TrackedSegmentObstacle::setCovariances(p_process_variance_, p_process_rate_variance_, p_measurement_variance_);
 
-  timer_.setPeriod(ros::Duration(p_sampling_time_), false);
+  timer_ = nh_->create_wall_timer(p_sampling_time_ * 1s, std::bind(&ObstacleTracker::timerCallback, this));
 
   if (p_active_ != prev_active) {
     if (p_active_) {
-      if(p_compensate_robot_velocity_)
-        odom_sub_ = nh_.subscribe("/odom", 1, &ObstacleTracker::odomCallback, this);
-      obstacles_sub_ = nh_.subscribe("raw_obstacles", 10, &ObstacleTracker::obstaclesCallback, this);
-      obstacles_pub_ = nh_.advertise<obstacle_detector::Obstacles>("tracked_obstacles", 10);
-      timer_.start();
+      if(p_compensate_robot_velocity_){
+        odom_sub_ = nh_->create_subscription<nav_msgs::msg::Odometry>(
+            "/odom", 10, std::bind(&ObstacleTracker::odomCallback, this, std::placeholders::_1));
+      }
+      obstacles_sub_ = nh_->create_subscription<obstacle_detector::msg::Obstacles>(
+            "raw_obstacles", 10, std::bind(&ObstacleTracker::obstaclesCallback, this, std::placeholders::_1));
+      obstacles_pub_ = nh_->create_publisher<obstacle_detector::msg::Obstacles>("tracked_obstacles", 10);
+      obstacles_vis_pub_ = nh_->create_publisher<visualization_msgs::msg::MarkerArray>("tracked_obstacles_visualization", 10);
     }
     else {
       // Send empty message
-      obstacle_detector::ObstaclesPtr obstacles_msg(new obstacle_detector::Obstacles);
-      obstacles_msg->header.frame_id = obstacles_.header.frame_id;
-      obstacles_msg->header.stamp = ros::Time::now();
-      obstacles_pub_.publish(obstacles_msg);
-
-      obstacles_sub_.shutdown();
-      obstacles_pub_.shutdown();
+      auto obstacles_msg = obstacle_detector::msg::Obstacles();
+      obstacles_msg.header.frame_id = obstacles_.header.frame_id;
+      obstacles_msg.header.stamp = nh_->get_clock()->now();
+      obstacles_pub_->publish(obstacles_msg);
 
       tracked_circle_obstacles_.clear();
       untracked_circle_obstacles_.clear();
       tracked_segment_obstacles_.clear();
       untracked_segment_obstacles_.clear();
-
-      timer_.stop();
     }
   }
-
-  return true;
 }
 
-void ObstacleTracker::timerCallback(const ros::TimerEvent&) {
+void ObstacleTracker::updateParams(const std::shared_ptr<rmw_request_id_t> request_header,
+                                     const std::shared_ptr<std_srvs::srv::Empty::Request> &req, 
+                                     const std::shared_ptr<std_srvs::srv::Empty::Response> &res) {
+  updateParamsUtil();
+}
+
+void ObstacleTracker::timerCallback() {
   updateObstacles();
   publishObstacles();
+  publishVisualizationObstacles();
 }
 
-void ObstacleTracker::odomCallback(const nav_msgs::Odometry::ConstPtr &msg)
+void ObstacleTracker::odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr& msg)
 {
   odom_ = *msg;
 }
 
-void ObstacleTracker::obstaclesCallback(const obstacle_detector::Obstacles::ConstPtr new_obstacles) {
+void ObstacleTracker::obstaclesCallback(const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
   obstaclesCallbackCircles(new_obstacles);
   obstaclesCallbackSegments(new_obstacles);
 }
 
-void ObstacleTracker::obstaclesCallbackCircles(const obstacle_detector::Obstacles::ConstPtr new_obstacles) {
-  if (new_obstacles->circles.size() > 0)
+void ObstacleTracker::obstaclesCallbackCircles(const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
+  if (new_obstacles->circles.size() > 0){
     radius_margin_ = new_obstacles->circles[0].radius - new_obstacles->circles[0].true_radius;
+  }
 
   int N = new_obstacles->circles.size();
   int T = tracked_circle_obstacles_.size();
@@ -164,7 +179,7 @@ void ObstacleTracker::obstaclesCallbackCircles(const obstacle_detector::Obstacle
   vector<int> used_new_obstacles;
 
   vector<TrackedCircleObstacle> new_tracked_obstacles;
-  vector<CircleObstacle> new_untracked_obstacles;
+  vector<obstacle_detector::msg::CircleObstacle> new_untracked_obstacles;
 
   // Check for fusion (only tracked obstacles)
   for (int i = 0; i < T-1; ++i) {
@@ -238,8 +253,9 @@ void ObstacleTracker::obstaclesCallbackCircles(const obstacle_detector::Obstacle
   // Remove tracked obstacles that are no longer existent due to fusion or fission and insert new ones
   // Sort in descending order to remove from back of the list
   sort(used_old_obstacles.rbegin(), used_old_obstacles.rend());
-  for (int idx : used_old_obstacles)
+  for (int idx : used_old_obstacles){
     tracked_circle_obstacles_.erase(tracked_circle_obstacles_.begin() + idx);
+  }
 
   tracked_circle_obstacles_.insert(tracked_circle_obstacles_.end(), new_tracked_obstacles.begin(), new_tracked_obstacles.end());
 
@@ -248,7 +264,7 @@ void ObstacleTracker::obstaclesCallbackCircles(const obstacle_detector::Obstacle
   untracked_circle_obstacles_.assign(new_untracked_obstacles.begin(), new_untracked_obstacles.end());
 }
 
-void ObstacleTracker::obstaclesCallbackSegments(const obstacle_detector::Obstacles::ConstPtr new_obstacles) {
+void ObstacleTracker::obstaclesCallbackSegments(const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
   int N = new_obstacles->segments.size();
   int T = tracked_segment_obstacles_.size();
   int U = untracked_segment_obstacles_.size();
@@ -271,7 +287,7 @@ void ObstacleTracker::obstaclesCallbackSegments(const obstacle_detector::Obstacl
   vector<int> used_new_obstacles;
 
   vector<TrackedSegmentObstacle> new_tracked_obstacles;
-  vector<SegmentObstacle> new_untracked_obstacles;
+  vector<obstacle_detector::msg::SegmentObstacle> new_untracked_obstacles;
 
   // Check for fusion (only tracked obstacles)
   for (int i = 0; i < T-1; ++i) {
@@ -355,7 +371,7 @@ void ObstacleTracker::obstaclesCallbackSegments(const obstacle_detector::Obstacl
   untracked_segment_obstacles_.assign(new_untracked_obstacles.begin(), new_untracked_obstacles.end());
 }
 
-double ObstacleTracker::obstacleCostFunction(const CircleObstacle& new_obstacle, const CircleObstacle& old_obstacle) {
+double ObstacleTracker::obstacleCostFunction(const obstacle_detector::msg::CircleObstacle& new_obstacle, const obstacle_detector::msg::CircleObstacle& old_obstacle) {
   mat distribution = mat(2, 2).zeros();
   vec relative_position = vec(2).zeros();
 
@@ -365,8 +381,8 @@ double ObstacleTracker::obstacleCostFunction(const CircleObstacle& new_obstacle,
 
   double direction = atan2(old_obstacle.velocity.y, old_obstacle.velocity.x);
 
-  geometry_msgs::Point new_center = transformPoint(new_obstacle.center, 0.0, 0.0, -direction);
-  geometry_msgs::Point old_center = transformPoint(old_obstacle.center, 0.0, 0.0, -direction);
+  geometry_msgs::msg::Point new_center = transformPoint(new_obstacle.center, 0.0, 0.0, -direction);
+  geometry_msgs::msg::Point old_center = transformPoint(old_obstacle.center, 0.0, 0.0, -direction);
 
   distribution(0, 0) = pow(p_std_correspondence_dev_, 2.0) + squaredLength(old_obstacle.velocity) * pow(tp, 2.0);
   distribution(1, 1) = pow(p_std_correspondence_dev_, 2.0);
@@ -384,11 +400,11 @@ double ObstacleTracker::obstacleCostFunction(const CircleObstacle& new_obstacle,
   return cost / 1.0;
 }
 
-double ObstacleTracker::obstacleCostFunction(const SegmentObstacle& new_obstacle, const SegmentObstacle& old_obstacle) {
+double ObstacleTracker::obstacleCostFunction(const obstacle_detector::msg::SegmentObstacle& new_obstacle, const obstacle_detector::msg::SegmentObstacle& old_obstacle) {
   return sqrt(pow(new_obstacle.first_point.x - old_obstacle.first_point.x, 2.0) + pow(new_obstacle.first_point.y - old_obstacle.first_point.y, 2.0) + pow(new_obstacle.last_point.x - old_obstacle.last_point.x, 2.0) + pow(new_obstacle.last_point.y - old_obstacle.last_point.y, 2.0));
 }
 
-void ObstacleTracker::calculateCostMatrix(const vector<CircleObstacle>& new_obstacles, mat& cost_matrix) {
+void ObstacleTracker::calculateCostMatrix(const vector<obstacle_detector::msg::CircleObstacle>& new_obstacles, mat& cost_matrix) {
   /*
    * Cost between two obstacles represents their difference.
    * The bigger the cost, the less similar they are.
@@ -410,7 +426,7 @@ void ObstacleTracker::calculateCostMatrix(const vector<CircleObstacle>& new_obst
   }
 }
 
-void ObstacleTracker::calculateCostMatrix(const vector<SegmentObstacle>& new_obstacles, mat& cost_matrix) {
+void ObstacleTracker::calculateCostMatrix(const vector<obstacle_detector::msg::SegmentObstacle>& new_obstacles, mat& cost_matrix) {
   /*
    * Cost between two obstacles represents their difference.
    * The bigger the cost, the less similar they are.
@@ -545,8 +561,8 @@ bool ObstacleTracker::fissionObstaclesCorrespond(const int idx, const int jdx, c
 }
 
 void ObstacleTracker::fuseObstacles(const vector<int>& fusion_indices, const vector<int> &col_min_indices,
-                                    vector<TrackedCircleObstacle>& new_tracked, const Obstacles::ConstPtr& new_obstacles) {
-  CircleObstacle c;
+                                    vector<TrackedCircleObstacle>& new_tracked, const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
+  obstacle_detector::msg::CircleObstacle c;
 
   double sum_var_x  = 0.0;
   double sum_var_y  = 0.0;
@@ -583,8 +599,8 @@ void ObstacleTracker::fuseObstacles(const vector<int>& fusion_indices, const vec
 }
 
 void ObstacleTracker::fuseObstacles(const vector<int>& fusion_indices, const vector<int> &col_min_indices,
-                                    vector<TrackedSegmentObstacle>& new_tracked, const Obstacles::ConstPtr& new_obstacles) {
-  SegmentObstacle c;
+                                    vector<TrackedSegmentObstacle>& new_tracked, const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
+  obstacle_detector::msg::SegmentObstacle c;
 
   double sum_var_x1  = 0.0;
   double sum_var_y1  = 0.0;
@@ -633,7 +649,7 @@ void ObstacleTracker::fuseObstacles(const vector<int>& fusion_indices, const vec
 }
 
 void ObstacleTracker::fissureObstacle(const vector<int>& fission_indices, const vector<int>& row_min_indices,
-                                      vector<TrackedCircleObstacle>& new_tracked, const Obstacles::ConstPtr& new_obstacles) {
+                                      vector<TrackedCircleObstacle>& new_tracked, const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
   // For each new obstacle taking part in fission create a tracked obstacle from the original old one and update it with the new one
   for (int idx : fission_indices) {
     TrackedCircleObstacle to = tracked_circle_obstacles_[row_min_indices[idx]];
@@ -648,7 +664,7 @@ void ObstacleTracker::fissureObstacle(const vector<int>& fission_indices, const 
 }
 
 void ObstacleTracker::fissureObstacle(const vector<int>& fission_indices, const vector<int>& row_min_indices,
-                                      vector<TrackedSegmentObstacle>& new_tracked, const Obstacles::ConstPtr& new_obstacles) {
+                                      vector<TrackedSegmentObstacle>& new_tracked, const obstacle_detector::msg::Obstacles::ConstSharedPtr& new_obstacles) {
   // For each new obstacle taking part in fission create a tracked obstacle from the original old one and update it with the new one
   for (int idx : fission_indices) {
     TrackedSegmentObstacle to = tracked_segment_obstacles_[row_min_indices[idx]];
@@ -679,13 +695,13 @@ void ObstacleTracker::updateObstacles() {
 }
 
 void ObstacleTracker::publishObstacles() {
-  obstacle_detector::ObstaclesPtr obstacles_msg(new obstacle_detector::Obstacles);
+  auto obstacles_msg = obstacle_detector::msg::Obstacles();
 
   obstacles_.circles.clear();
   obstacles_.segments.clear();
 
   for (auto& tracked_circle_obstacle : tracked_circle_obstacles_) {
-    CircleObstacle ob = tracked_circle_obstacle.getObstacle();
+    obstacle_detector::msg::CircleObstacle ob = tracked_circle_obstacle.getObstacle();
     ob.true_radius = ob.radius - radius_margin_;
     // Compensate robot velocity from obstacle velocity
     // Velocities are in robot's frame, x forward y leftwards
@@ -699,7 +715,7 @@ void ObstacleTracker::publishObstacles() {
     obstacles_.circles.push_back(ob);
   }
   for (auto& tracked_segment_obstacle : tracked_segment_obstacles_) {
-    SegmentObstacle ob = tracked_segment_obstacle.getObstacle();
+    obstacle_detector::msg::SegmentObstacle ob = tracked_segment_obstacle.getObstacle();
     // Compensate robot velocity from obstacle velocity
     // Velocities are in robot's frame, x forward y leftwards
     if (p_compensate_robot_velocity_)
@@ -716,10 +732,140 @@ void ObstacleTracker::publishObstacles() {
     obstacles_.segments.push_back(ob);
   }
 
-  *obstacles_msg = obstacles_;
-  obstacles_msg->header.stamp = ros::Time::now();
+  obstacles_msg = obstacles_;
+  obstacles_msg.header.stamp = nh_->get_clock()->now();
 
-  obstacles_pub_.publish(obstacles_msg);
+  obstacles_pub_->publish(obstacles_msg);
+}
+
+
+visualization_msgs::msg::Marker ObstacleTracker::getMarkerBase(uid_t uid){
+  visualization_msgs::msg::Marker marker;
+  marker.header.stamp = nh_->get_clock()->now();
+  marker.header.frame_id = obstacles_.header.frame_id;
+  marker.id = uid;
+  marker.lifetime = rclcpp::Duration(p_sampling_time_ * 1s);
+
+  marker.color.r = ((int)((uid + 1) * 0.2799979960764232 * 10000)%10) * 0.1;
+  marker.color.g = ((int)((uid + 1) * 0.18779357508452654 * 10000)%10) * 0.1;
+  marker.color.b = ((int)((uid + 1) * 0.5754993762271469 * 10000)%10) * 0.1;
+  marker.color.a = 1.0;
+
+  marker.pose.orientation.x = 0.0;
+  marker.pose.orientation.y = 0.0;
+  marker.pose.orientation.z = 0.0;
+  marker.pose.orientation.w = 1.0;
+
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  return marker;
+}
+
+visualization_msgs::msg::Marker ObstacleTracker::getMarkerCircle(obstacle_detector::msg::CircleObstacle& ob){
+    auto circ_marker = getMarkerBase(ob.uid);
+    circ_marker.ns = "tracked_obstacles_blobs";
+    auto scale = ob.true_radius;
+    // debug: min scale for better visualization
+    // if (scale < 0.2) scale = 0.2;
+    circ_marker.scale.x = circ_marker.scale.y = scale;
+    circ_marker.scale.z = 0.01;
+    circ_marker.type = visualization_msgs::msg::Marker::CYLINDER;
+    
+    circ_marker.pose.position.x = ob.center.x;
+    circ_marker.pose.position.y = ob.center.y;
+    // tracked obstacles are a bit higher than the raw ones, so that they can be visualized together
+    circ_marker.pose.position.z = 0.1;
+    return circ_marker;
+}
+
+visualization_msgs::msg::Marker ObstacleTracker::getMarkerVelocityArrow(uid_t uid, 
+                                                                        double px,
+                                                                        double py,
+                                                                        double vx,
+                                                                        double vy){
+    auto arrow_marker = getMarkerBase(uid);
+    arrow_marker.ns = "tracked_obstacles_velocities";
+    arrow_marker.type = visualization_msgs::msg::Marker::ARROW;
+    arrow_marker.scale.y = 0.07;  // width
+    arrow_marker.scale.z = 0.01; // height
+    arrow_marker.color.r = arrow_marker.color.g = arrow_marker.color.b = arrow_marker.color.a = 1.0;
+    
+    arrow_marker.pose.position.x = px;
+    arrow_marker.pose.position.y = py;
+    double vel_magnitude = std::sqrt(vx*vx + vy*vy);
+    double alpha = std::atan2(vy, vx);
+    // assume rotation around the z-axis (0, 0, 1)
+    arrow_marker.scale.x = vel_magnitude;
+    arrow_marker.pose.orientation.z = std::sin(alpha/2);
+    arrow_marker.pose.orientation.w = std::cos(alpha/2);
+    return arrow_marker; 
+}
+
+visualization_msgs::msg::Marker ObstacleTracker::getMarkerSegment(obstacle_detector::msg::SegmentObstacle& ob){
+    auto seg_marker = getMarkerBase(ob.uid);
+    seg_marker.ns = "tracked_obstacles_blobs";
+    seg_marker.scale.x = 0.1;
+    seg_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+
+    auto seg_fp = geometry_msgs::msg::Point();
+    seg_fp.x = ob.first_point.x;
+    seg_fp.y = ob.first_point.y;
+    seg_fp.z = 0.1;
+    auto seg_lp = geometry_msgs::msg::Point();
+    seg_lp.x = ob.last_point.x;
+    seg_lp.y = ob.last_point.y;
+    seg_lp.z = 0.1;
+    seg_marker.points.push_back(seg_fp);
+    seg_marker.points.push_back(seg_lp);
+    return seg_marker;
+}
+
+visualization_msgs::msg::Marker ObstacleTracker::getMarkerText(uid_t uid){
+    auto text_marker = getMarkerBase(uid);
+    text_marker.ns = "tracked_obstacles_ids";
+    text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text_marker.text = std::to_string(uid);
+    text_marker.scale.x = text_marker.scale.y = text_marker.scale.z = 0.2;
+    text_marker.color.r = text_marker.color.g = text_marker.color.b = text_marker.color.a = 1.0;
+    // text id is above marker
+    text_marker.pose.position.z = 0.2;
+    return text_marker;
+}
+
+void ObstacleTracker::publishVisualizationObstacles() {
+  auto obstacles_vis_msg = visualization_msgs::msg::MarkerArray();
+
+  //clean up previous markers
+  auto marker_d = getMarkerBase(0);
+  marker_d.action = visualization_msgs::msg::Marker::DELETEALL;
+  obstacles_vis_msg.markers.push_back(marker_d);
+
+  for (auto& tracked_circle_obstacle : tracked_circle_obstacles_) {
+    obstacle_detector::msg::CircleObstacle ob = tracked_circle_obstacle.getObstacle();
+    auto circ_marker = getMarkerCircle(ob);
+    auto text_marker = getMarkerText(ob.uid);
+    text_marker.pose.position.x = ob.center.x;
+    text_marker.pose.position.y = ob.center.y;
+    auto arrow_vel = getMarkerVelocityArrow(ob.uid, ob.center.x, ob.center.y, ob.velocity.x, ob.velocity.y);
+    obstacles_vis_msg.markers.push_back(circ_marker);
+    obstacles_vis_msg.markers.push_back(text_marker);
+    obstacles_vis_msg.markers.push_back(arrow_vel);
+  }
+
+  for (auto& tracked_segment_obstacle : tracked_segment_obstacles_) {
+    obstacle_detector::msg::SegmentObstacle ob = tracked_segment_obstacle.getObstacle();
+    auto seg_marker = getMarkerSegment(ob);
+    auto text_marker = getMarkerText(ob.uid);
+    double px = (ob.first_point.x + ob.last_point.x)/2.0;
+    double py = (ob.first_point.y + ob.last_point.y)/2.0;
+    double vx = (ob.first_velocity.x + ob.last_velocity.x)/2.0;
+    double vy = (ob.first_velocity.y + ob.last_velocity.y)/2.0;
+    text_marker.pose.position.x = px;
+    text_marker.pose.position.y = py;
+    auto arrow_vel = getMarkerVelocityArrow(ob.uid, px, py, vx, vy);
+    obstacles_vis_msg.markers.push_back(seg_marker);
+    obstacles_vis_msg.markers.push_back(text_marker);
+  }
+  obstacles_vis_pub_->publish(obstacles_vis_msg);
 }
 
 // Ugly initialization of static members of tracked obstacles...

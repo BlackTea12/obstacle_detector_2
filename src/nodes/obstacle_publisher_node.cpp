@@ -38,21 +38,24 @@
 using namespace obstacle_detector;
 
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "obstacle_publisher", ros::init_options::NoRosout);
-  ros::NodeHandle nh("");
-  ros::NodeHandle nh_local("~");
 
+  rclcpp::init(argc, argv);
+  auto publisher_node = rclcpp::Node::make_shared("obstacle_publisher");
   try {
-    ROS_INFO("[Obstacle Publisher]: Initializing node");
-    ObstaclePublisher op(nh, nh_local);
-    ros::spin();
+    RCLCPP_INFO(publisher_node->get_logger(), "[Obstacle Publisher]: Initializing node");
+    ObstaclePublisher ot(publisher_node, publisher_node);
+    rclcpp::spin(publisher_node);
   }
   catch (const char* s) {
-    ROS_FATAL_STREAM("[Obstacle Publisher]: " << s);
+    RCLCPP_FATAL_STREAM(publisher_node->get_logger(), "[Obstacle Publisher]: "  << s);
   }
-  catch (...) {
-    ROS_FATAL_STREAM("[Obstacle Publisher]: Unexpected error");
+  catch (const std::exception &exc) {
+    auto eptr = std::current_exception(); // capture
+    RCLCPP_FATAL_STREAM(publisher_node->get_logger(), "[Obstacle Publisher]: " << exc.what());
   }
-
+  catch (...){
+    RCLCPP_FATAL_STREAM(publisher_node->get_logger(), "[Obstacle Publisher]: Unknown error");
+  }
+  rclcpp::shutdown();
   return 0;
 }

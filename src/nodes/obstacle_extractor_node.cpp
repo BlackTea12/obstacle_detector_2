@@ -38,21 +38,27 @@
 using namespace obstacle_detector;
 
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "obstacle_extractor", ros::init_options::NoRosout);
-  ros::NodeHandle nh("");
-  ros::NodeHandle nh_local("~");
+
+  rclcpp::init(argc, argv);
+  auto extractor_node = rclcpp::Node::make_shared("obstacle_extractor");
 
   try {
-    ROS_INFO("[Obstacle Extractor]: Initializing node");
-    ObstacleExtractor od(nh, nh_local);
-    ros::spin();
+    RCLCPP_INFO(extractor_node->get_logger(), "[Obstacle Extractor]: Initializing node");
+    ObstacleExtractor od(extractor_node, extractor_node);
+    rclcpp::spin(extractor_node);
+    // ros::spin();
   }
   catch (const char* s) {
-    ROS_FATAL_STREAM("[Obstacle Extractor]: "  << s);
+    RCLCPP_FATAL_STREAM(extractor_node->get_logger(), "[Obstacle Extractor]: "  << s);
   }
-  catch (...) {
-    ROS_FATAL_STREAM("[Obstacle Extractor]: Unexpected error");
+  catch (const std::exception &exc) {
+    auto eptr = std::current_exception(); // capture
+    RCLCPP_FATAL_STREAM(extractor_node->get_logger(), "[Obstacle Extractor]: " << exc.what());
+  }
+  catch (...){
+    RCLCPP_FATAL_STREAM(extractor_node->get_logger(), "[Obstacle Extractor]: Unknown error");
   }
 
+  rclcpp::shutdown();
   return 0;
 }

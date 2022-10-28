@@ -35,9 +35,11 @@
 
 #pragma once
 
-#include <ros/ros.h>
-#include <std_srvs/Empty.h>
-#include <obstacle_detector/Obstacles.h>
+#include "rclcpp/rclcpp.hpp"
+#include "std_srvs/srv/empty.hpp"
+#include "obstacle_detector/msg/obstacles.hpp"
+#include "obstacle_detector/msg/circle_obstacle.hpp"
+#include "obstacle_detector/msg/segment_obstacle.hpp"
 
 namespace obstacle_detector
 {
@@ -45,14 +47,17 @@ namespace obstacle_detector
 class ObstaclePublisher
 {
 public:
-  ObstaclePublisher(ros::NodeHandle &nh, ros::NodeHandle &nh_local);
+  ObstaclePublisher(std::shared_ptr<rclcpp::Node> nh, std::shared_ptr<rclcpp::Node> nh_local);
   ~ObstaclePublisher();
 
 private:
-  bool updateParams(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res);
-  void timerCallback(const ros::TimerEvent& e);
+  void updateParamsUtil();
+  void updateParams(const std::shared_ptr<rmw_request_id_t> request_header, 
+                    const std::shared_ptr<std_srvs::srv::Empty::Request> &req, 
+                    const std::shared_ptr<std_srvs::srv::Empty::Response> &res);
+  void timerCallback();
 
-  void initialize() { std_srvs::Empty empt; updateParams(empt.request, empt.response); }
+  void initialize() { std_srvs::srv::Empty empt; updateParamsUtil(); }
 
   void calculateObstaclesPositions(double dt);
   void fusionExample(double t);
@@ -60,14 +65,14 @@ private:
   void publishObstacles();
   void reset();
 
-  ros::NodeHandle nh_;
-  ros::NodeHandle nh_local_;
+  std::shared_ptr<rclcpp::Node> nh_;
+  std::shared_ptr<rclcpp::Node> nh_local_;
 
-  ros::Publisher obstacle_pub_;
-  ros::ServiceServer params_srv_;
-  ros::Timer timer_;
+  rclcpp::Publisher<obstacle_detector::msg::Obstacles>::SharedPtr obstacles_pub_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr params_srv_;
+  rclcpp::TimerBase::SharedPtr timer_;
 
-  obstacle_detector::Obstacles obstacles_;
+  obstacle_detector::msg::Obstacles obstacles_;
   double t_;
 
   // Parameters

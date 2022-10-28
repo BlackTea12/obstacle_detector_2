@@ -38,68 +38,72 @@
 using namespace std;
 using namespace obstacle_detector;
 
-ObstaclePublisher::ObstaclePublisher(ros::NodeHandle& nh, ros::NodeHandle& nh_local) : nh_(nh), nh_local_(nh_local) {
+ObstaclePublisher::ObstaclePublisher(std::shared_ptr<rclcpp::Node> nh, std::shared_ptr<rclcpp::Node> nh_local) {
+    nh_ = nh;
+  nh_local_ = nh_local;
   p_active_ = false;
-  t_ = 0.0;
+//   params_srv_ = nh_->create_service<std_srvs::srv::Empty>("params", 
+//                                                           std::bind(
+//                                                                 &ObstaclePublisher::updateParams,
+//                                                                 this, 
+//                                                                 std::placeholders::_1,
+//                                                                 std::placeholders::_2,
+//                                                                 std::placeholders::_3
+//                                                           ));
 
-  timer_ = nh_.createTimer(ros::Duration(1.0), &ObstaclePublisher::timerCallback, this, false, false);
-  params_srv_ = nh_local_.advertiseService("params", &ObstaclePublisher::updateParams, this);
+  t_ = 0.0;
+  timer_ = nh_->create_wall_timer(1000ms, std::bind(&ObstaclePublisher::timerCallback, this));
   initialize();
 }
 
 ObstaclePublisher::~ObstaclePublisher() {
-  nh_local_.deleteParam("active");
-  nh_local_.deleteParam("reset");
-
-  nh_local_.deleteParam("fusion_example");
-  nh_local_.deleteParam("fission_example");
-
-  nh_local_.deleteParam("loop_rate");
-  nh_local_.deleteParam("radius_margin");
-
-  nh_local_.deleteParam("x_vector");
-  nh_local_.deleteParam("y_vector");
-  nh_local_.deleteParam("r_vector");
-
-  nh_local_.deleteParam("vx_vector");
-  nh_local_.deleteParam("vy_vector");
-
-  nh_local_.deleteParam("frame_id");
 }
 
-bool ObstaclePublisher::updateParams(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res) {
+
+void ObstaclePublisher::updateParamsUtil() {
   bool prev_active = p_active_;
 
-  nh_local_.param<bool>("active", p_active_, true);
-  nh_local_.param<bool>("reset", p_reset_, false);
+  nh_->declare_parameter("active", rclcpp::PARAMETER_BOOL);
+  nh_->declare_parameter("reset", rclcpp::PARAMETER_BOOL);
+  // Before using compensate_robot_velocity, consider using pointcloud input from map frame instead of base_link frame
+  nh_->declare_parameter("fusion_example", rclcpp::PARAMETER_BOOL);
+  nh_->declare_parameter("fission_example", rclcpp::PARAMETER_BOOL);
+  nh_->declare_parameter("loop_rate", rclcpp::PARAMETER_DOUBLE);
+  nh_->declare_parameter("radius_margin", rclcpp::PARAMETER_DOUBLE);
 
-  nh_local_.param<bool>("fusion_example", p_fusion_example_, false);
-  nh_local_.param<bool>("fission_example", p_fission_example_, false);
+  nh_->get_parameter_or("active", p_active_, true);
+  nh_->get_parameter_or("reset", p_reset_, false);
+  nh_->get_parameter_or("fusion_example", p_fusion_example_, false);
+  nh_->get_parameter_or("fission_example", p_fission_example_, false);
+  nh_->get_parameter_or("loop_rate", p_loop_rate_, 10.0);
+  nh_->get_parameter_or("radius_margin", p_radius_margin_, 0.25);
 
-  nh_local_.param<double>("loop_rate", p_loop_rate_, 10.0);
-  nh_local_.param<double>("radius_margin", p_radius_margin_, 0.25);
+  nh_->declare_parameter("x_vector", rclcpp::PARAMETER_DOUBLE_ARRAY);
+  nh_->declare_parameter("y_vector", rclcpp::PARAMETER_DOUBLE_ARRAY);
+  nh_->declare_parameter("r_vector", rclcpp::PARAMETER_DOUBLE_ARRAY);
+  nh_->declare_parameter("vx_vector", rclcpp::PARAMETER_DOUBLE_ARRAY);
+  nh_->declare_parameter("vy_vector", rclcpp::PARAMETER_DOUBLE_ARRAY);
 
-  nh_local_.getParam("x_vector", p_x_vector_);
-  nh_local_.getParam("y_vector", p_y_vector_);
-  nh_local_.getParam("r_vector", p_r_vector_);
+  nh_->get_parameter("x_vector", p_x_vector_);
+  nh_->get_parameter("y_vector", p_y_vector_);
+  nh_->get_parameter("r_vector", p_r_vector_);
+  nh_->get_parameter("vx_vector", p_vx_vector_);
+  nh_->get_parameter("vy_vector", p_vy_vector_);
 
-  nh_local_.getParam("vx_vector", p_vx_vector_);
-  nh_local_.getParam("vy_vector", p_vy_vector_);
-
-  nh_local_.param<string>("frame_id", p_frame_id_, string("map"));
+  nh_->declare_parameter("frame_id", rclcpp::PARAMETER_STRING);
+  nh_->get_parameter_or("frame_id", p_frame_id_, string("map"));
 
   p_sampling_time_ = 1.0 / p_loop_rate_;
-  timer_.setPeriod(ros::Duration(p_sampling_time_), false);
+  timer_ = nh_->create_wall_timer(p_sampling_time_ * 1s, std::bind(&ObstaclePublisher::timerCallback, this));
 
   if (p_active_ != prev_active) {
     if (p_active_) {
-      obstacle_pub_ = nh_.advertise<obstacle_detector::Obstacles>("obstacles", 10);
-      timer_.start();
+      obstacles_pub_ = nh_->create_publisher<obstacle_detector::msg::Obstacles>("obstacles", 10);
     }
-    else {
-      obstacle_pub_.shutdown();
-      timer_.stop();
-    }
+    // else {
+    //   obstacle_pub_.shutdown();
+    //   timer_.stop();
+    // }
   }
 
   obstacles_.header.frame_id = p_frame_id_;
@@ -107,10 +111,10 @@ bool ObstaclePublisher::updateParams(std_srvs::Empty::Request& req, std_srvs::Em
 
   if (p_x_vector_.size() != p_y_vector_.size() || p_x_vector_.size() != p_r_vector_.size() ||
       p_x_vector_.size() != p_vx_vector_.size() || p_x_vector_.size() != p_vy_vector_.size())
-    return false;
+    return;
 
   for (int idx = 0; idx < p_x_vector_.size(); ++idx) {
-    CircleObstacle circle;
+    obstacle_detector::msg::CircleObstacle circle;
     circle.center.x = p_x_vector_[idx];
     circle.center.y = p_y_vector_[idx];
     circle.radius = p_r_vector_[idx];
@@ -124,11 +128,15 @@ bool ObstaclePublisher::updateParams(std_srvs::Empty::Request& req, std_srvs::Em
 
   if (p_reset_)
     reset();
-
-  return true;
 }
 
-void ObstaclePublisher::timerCallback(const ros::TimerEvent& e) {
+void ObstaclePublisher::updateParams(const std::shared_ptr<rmw_request_id_t> request_header,
+                                     const std::shared_ptr<std_srvs::srv::Empty::Request> &req, 
+                                     const std::shared_ptr<std_srvs::srv::Empty::Response> &res) {
+  updateParamsUtil();
+}
+
+void ObstaclePublisher::timerCallback() {
   t_ += p_sampling_time_;
 
   calculateObstaclesPositions(p_sampling_time_);
@@ -150,7 +158,7 @@ void ObstaclePublisher::calculateObstaclesPositions(double dt) {
 }
 
 void ObstaclePublisher::fusionExample(double t) {
-  CircleObstacle circ1, circ2;
+  obstacle_detector::msg::CircleObstacle circ1, circ2;
 
   obstacles_.circles.clear();
 
@@ -181,7 +189,7 @@ void ObstaclePublisher::fusionExample(double t) {
 }
 
 void ObstaclePublisher::fissionExample(double t) {
-  CircleObstacle circ1, circ2;
+  obstacle_detector::msg::CircleObstacle circ1, circ2;
 
   obstacles_.circles.clear();
 
@@ -219,15 +227,15 @@ void ObstaclePublisher::fissionExample(double t) {
 }
 
 void ObstaclePublisher::publishObstacles() {
-  obstacle_detector::ObstaclesPtr obstacles_msg(new obstacle_detector::Obstacles);
-  *obstacles_msg = obstacles_;
+  obstacle_detector::msg::Obstacles  obstacles_msg;
+  obstacles_msg = obstacles_;
 
-  obstacles_msg->header.stamp = ros::Time::now();
-  obstacle_pub_.publish(obstacles_msg);
+  obstacles_msg.header.stamp = nh_->get_clock()->now();
+  obstacles_pub_->publish(obstacles_msg);
 }
 
 void ObstaclePublisher::reset() {
   t_ = 0.0;
   p_reset_ = false;
-  nh_local_.setParam("reset", false);
+//   nh_local_.setParam("reset", false);
 }

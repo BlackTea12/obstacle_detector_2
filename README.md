@@ -1,5 +1,14 @@
-# The obstacle_detector package 
+# ROS2 obstacle detector and tracker (ROS2 Humble)
+This package provides utilities to detect and track obstacles from data provided by 2D laser scanners. Detected obstacles come in a form of line segments or circles. The package was designed for a robot equipped with two laser scanners therefore it contains several additional utilities.
 
+## Acknowledgements
+The code in this repository is a ROS2 port of the code in [https://github.com/jk-ethz/obstacle_detector](https://github.com/jk-ethz/obstacle_detector), which itself is a fork of [https://github.com/tysik/obstacle_detector](https://github.com/tysik/obstacle_detector). You can find the original LICENSE [here](/ORIGINAL_LICENSE). Any changes I made that are not covered by the original LICENSE are covered by the LICENSE [here](/LICENSE). The README of the original package can be found below.
+
+## ROS2 Notes
+The current port includes all core functionality (detection, tracking, publishing, setting of parameters in the launch files). The Rviz visualization of obstacles was moved to standard `MarkerArray` messages instead of the custom implementation of the ROS1 original package. RViz "live" control panels have not yet been ported. I have plans to move this functionality to `rqt dynamic_reconfigure`.
+
+
+# Original README (obstacle_detector package)
 The `obstacle_detector` package provides utilities to detect and track obstacles from data provided by 2D laser scanners. Detected obstacles come in a form of line segments or circles. The package was designed for a robot equipped with two laser scanners therefore it contains several additional utilities. The working principles of the method are described in an article provided in the `resources` folder.
 
 The package requires [Armadillo C++](http://arma.sourceforge.net) library for compilation and runtime.
@@ -37,6 +46,8 @@ All of the nodes can be in either active or sleep mode, triggered by setting the
 For the ease of use it is recomended to use appropriate Rviz panels provided for the nodes with the package. The Rviz panels communicate via parameter server and service-client calls, therefore the names of the nodes must be preserved unchanged (cf. launch files for examples).
 
 ### 1.1. The scans_merger node
+**Note: for convenience, the ROS2 implementation of this node has been moved to a separate repository at [https://github.com/giuschio/scan_merger_2.git](https://github.com/giuschio/scan_merger_2.git).**
+
 
 This node converts two messages of type `sensor_msgs/LaserScan` from topics `front_scan` and `rear_scan` into a single laser scan of the same type, published under topic `scan` and/or a point cloud of type `sensor_msgs/PointCloud`, published under topic `pcl`. The difference between both is that the resulting laser scan divides the area into finite number of circular sectors and put one point (or actually one range value) in each section occupied by some measured points, whereas the resulting point cloud simply copies all of the points obtained from sensors.
 
@@ -70,7 +81,7 @@ Even if only one laser scanner is used, the node can be useful for simple data p
 
 In the original implementation, the `~target_frame_id` is the `robot` frame. However, with a moving robot, this causes the Kalman filters later on to think that the points are moving even though the robot is moving w. r. t. the map. That's why we enhance the point cloud with "range" (distance) information in the `scans_merger` node. This means that even though the origin of the target frame does not match the lidar scan origin, we still preserve the distance of each point to the scanner that produced the point. For that reason, it is absolutely essential to run the scans through the `scans_merger` node, even if not merging scans and to set `publish_pcl` to `true`.
 
-The package comes with Rviz panel for this node.
+The package comes with Rviz panel for this node (**not yet ported**).
 
 -----------------------
 <p align="center">
@@ -115,7 +126,7 @@ The node is configurable with the following set of local parameters:
 * `~radius_enlargement` (`double`, default: `0.25`) - artificially enlarge the circles radius by this value,
 * `~frame_id` (`string`, default: `map`) - name of the coordinate frame used as origin for produced obstacles (used only if `transform_coordinates` flag is set to true).
 
-The package comes with Rviz panel for this node.
+The package comes with Rviz panel for this node (**not yet ported**).
 
 -----------------------
 <p align="center">
@@ -152,7 +163,7 @@ The node works in a synchronous manner with the default rate of 100 Hz. If detec
 * `~measurement_variance` (`double`, default `1.0`) - variance of measured obstacles values (parameter of Kalman Filter),
 * `~frame_id` (`string`, default: `map`) - name of the coordinate frame in which the obstacles are described,
 
-The package comes with Rviz panel for this node.
+The package comes with Rviz panel for this node (**not yet ported**).
 
 -----------------------
 <p align="center">
@@ -183,7 +194,7 @@ The following parameters are used to provide the node with a set of obstacles:
 * `~x_vector` (`std::vector<double>`, default: `[]`) - the array of velocities of obstacles center points in x direction,
 * `~y_vector` (`std::vector<double>`, default: `[]`) - the array of velocities of obstacles center points in y direction.
 
-The package comes with Rviz panel for this node.
+The package comes with Rviz panel for this node (**not yet ported**).
 
 -----------------------
 <p align="center">

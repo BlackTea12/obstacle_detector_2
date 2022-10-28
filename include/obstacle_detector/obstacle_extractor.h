@@ -35,17 +35,32 @@
 
 #pragma once
 
-#include <ros/ros.h>
-#include <tf/transform_listener.h>
-#include <std_srvs/Empty.h>
-#include <sensor_msgs/LaserScan.h>
-#include <sensor_msgs/PointCloud.h>
-#include <obstacle_detector/Obstacles.h>
+#include "rclcpp/rclcpp.hpp"
+#include "tf2/exceptions.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
 
 #include "obstacle_detector/utilities/point.h"
 #include "obstacle_detector/utilities/segment.h"
 #include "obstacle_detector/utilities/circle.h"
 #include "obstacle_detector/utilities/point_set.h"
+#include "obstacle_detector/utilities/math_utilities.h"
+
+#include "geometry_msgs/msg/point.hpp"
+#include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/vector3.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
+#include "sensor_msgs/msg/point_cloud.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include "sensor_msgs/point_cloud2_iterator.hpp"
+#include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "std_srvs/srv/empty.hpp"
+
+#include "obstacle_detector/msg/obstacles.hpp"
+#include "obstacle_detector/msg/circle_obstacle.hpp"
+#include "obstacle_detector/msg/segment_obstacle.hpp"
+
 
 namespace obstacle_detector
 {
@@ -53,19 +68,25 @@ namespace obstacle_detector
 class ObstacleExtractor
 {
 public:
-  ObstacleExtractor(ros::NodeHandle& nh, ros::NodeHandle& nh_local);
+  ObstacleExtractor(std::shared_ptr<rclcpp::Node> nh, std::shared_ptr<rclcpp::Node> nh_local);
   ~ObstacleExtractor();
 
 private:
-  bool updateParams(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res);
-  void scanCallback(const sensor_msgs::LaserScan::ConstPtr scan_msg);
-  void pclCallback(const sensor_msgs::PointCloud::ConstPtr pcl_msg);
+  void updateParamsUtil();
+  void updateParams(const std::shared_ptr<rmw_request_id_t> request_header, 
+                    const std::shared_ptr<std_srvs::srv::Empty::Request> &req, 
+                    const std::shared_ptr<std_srvs::srv::Empty::Response> &res);
+  void scanCallback(const sensor_msgs::msg::LaserScan& scan_msg);
+  void pclCallback(const sensor_msgs::msg::PointCloud& pcl_msg);
+  void pcl2Callback(sensor_msgs::msg::PointCloud2::SharedPtr pcl_msg);
 
-  void initialize() { std_srvs::Empty empt; updateParams(empt.request, empt.response); }
+  void initialize() { std_srvs::srv::Empty empt; updateParamsUtil(); }
 
   void processPoints();
   void groupPoints();
+  void transformObstacles();
   void publishObstacles();
+  void publishVisualizationObstacles();
 
   void detectSegments(const PointSet& point_set);
   void mergeSegments();
@@ -77,17 +98,22 @@ private:
   void mergeCircles();
   bool compareCircles(const Circle& c1, const Circle& c2, Circle& merged_circle);
 
-  ros::NodeHandle nh_;
-  ros::NodeHandle nh_local_;
+  std::shared_ptr<rclcpp::Node> nh_;
+  std::shared_ptr<rclcpp::Node> nh_local_;
 
-  ros::Subscriber scan_sub_;
-  ros::Subscriber pcl_sub_;
-  ros::Publisher obstacles_pub_;
-  ros::ServiceServer params_srv_;
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr pcl_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pcl2_sub_;
+  rclcpp::Publisher<obstacle_detector::msg::Obstacles>::SharedPtr obstacles_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacles_vis_pub_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr params_srv_;
 
-  ros::Time stamp_;
+  rclcpp::Time stamp_;
+  rclcpp::Time time_last_marker_published_;
+  int num_active_markers_ = 0;
   std::string base_frame_id_;
-  tf::TransformListener tf_listener_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
 
   std::list<Point> input_points_;
   std::list<Segment> segments_;
@@ -97,6 +123,7 @@ private:
   bool p_active_;
   bool p_use_scan_;
   bool p_use_pcl_;
+  bool p_use_pcl_2_;
 
   bool p_use_split_and_merge_;
   bool p_circles_from_visibles_;
@@ -119,6 +146,7 @@ private:
   double p_max_y_limit_;
 
   std::string p_frame_id_;
+  std::string published_obstacles_frame_id_ = "";
 };
 
 } // namespace obstacle_detector

@@ -38,21 +38,23 @@
 using namespace obstacle_detector;
 
 int main(int argc, char** argv) {
-  ros::init(argc, argv, "obstacle_tracker", ros::init_options::NoRosout);
-  ros::NodeHandle nh("");
-  ros::NodeHandle nh_local("~");
-
+  rclcpp::init(argc, argv);
+  auto tracker_node = rclcpp::Node::make_shared("obstacle_tracker");
   try {
-    ROS_INFO("[Obstacle Tracker]: Initializing node");
-    ObstacleTracker ot(nh, nh_local);
-    ros::spin();
+    RCLCPP_INFO(tracker_node->get_logger(), "[Obstacle Tracker]: Initializing node");
+    ObstacleTracker ot(tracker_node, tracker_node);
+    rclcpp::spin(tracker_node);
   }
   catch (const char* s) {
-    ROS_FATAL_STREAM("[Obstacle Tracker]: " << s);
+    RCLCPP_FATAL_STREAM(tracker_node->get_logger(), "[Obstacle Tracker]: "  << s);
   }
-  catch (...) {
-    ROS_FATAL_STREAM("[Obstacle Tracker]: Unexpected error");
+  catch (const std::exception &exc) {
+    auto eptr = std::current_exception(); // capture
+    RCLCPP_FATAL_STREAM(tracker_node->get_logger(), "[Obstacle Tracker]: " << exc.what());
   }
-
+  catch (...){
+    RCLCPP_FATAL_STREAM(tracker_node->get_logger(), "[Obstacle Tracker]: Unknown error");
+  }
+  rclcpp::shutdown();
   return 0;
 }
