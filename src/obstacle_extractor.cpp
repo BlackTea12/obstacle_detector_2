@@ -489,8 +489,11 @@ void ObstacleExtractor::publishVisualizationObstacles(){
         circ_marker.action = visualization_msgs::msg::Marker::ADD;
         circ_marker.id = id++;
         circ_marker.ns = "raw_obstacles";
-        circ_marker.scale.x = c.radius;
-        circ_marker.scale.y = c.radius;
+        // fake a bigger obstacle radius for visualization purposes
+        double rad = c.radius;
+        if (rad < 0.2){rad = 0.2;}
+        circ_marker.scale.x = rad;
+        circ_marker.scale.y = rad;
         circ_marker.scale.z = 0.01;
         circ_marker.color.g = 1.0;
         circ_marker.color.a = 1.0;
