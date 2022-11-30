@@ -170,7 +170,7 @@ void ObstacleExtractor::pclCallback(const sensor_msgs::msg::PointCloud& pcl_msg)
   const auto range_channel = std::find_if(pcl_msg.channels.begin(), pcl_msg.channels.end(), [] (const sensor_msgs::msg::ChannelFloat32& channel) { return channel.name == "range"; } );
   int i = 0;
   for (const geometry_msgs::msg::Point32& point : pcl_msg.points) {
-    auto point_copy = Point(point.x, point.y);
+    auto point_copy = Point(point.x, point.y, 0., point.z);
     if (range_channel != pcl_msg.channels.end()) {
       point_copy.range = range_channel->values.at(i++);
       assert(point_copy.range >= 0.0);
@@ -191,12 +191,17 @@ void ObstacleExtractor::pcl2Callback(sensor_msgs::msg::PointCloud2::SharedPtr pc
   const size_t number_of_points = pcl_msg->height * pcl_msg->width;
   sensor_msgs::PointCloud2Iterator<float> iter_x(*pcl_msg, "x");
   sensor_msgs::PointCloud2Iterator<float> iter_y(*pcl_msg, "y");
-  for (size_t i = 0; i < number_of_points; ++i, ++iter_x, ++iter_y){
+  sensor_msgs::PointCloud2Iterator<float> iter_z(*pcl_msg, "z");
+  for (size_t i = 0; i < number_of_points; ++i, ++iter_x, ++iter_y, ++iter_z){
     double point_x = (*iter_x);
     double point_y = (*iter_y);
-    auto point_copy = Point(point_x, point_y);
+    double point_z = (*iter_z);
+    auto point_copy = Point(point_x, point_y, 0., point_z);
     input_points_.push_back(point_copy);
     RCLCPP_WARN_ONCE(nh_->get_logger(), "Assuming point cloud origin aligns with lidar origin");
+    // RCLCPP_WARN_STREAM(
+    // nh_->get_logger(),
+    // "px " << point_x << ", py " << point_y << ", pz " << point_z);
   }
   processPoints();
 }
@@ -468,11 +473,11 @@ void ObstacleExtractor::publishVisualizationObstacles(){
     auto seg_fp = geometry_msgs::msg::Point();
     seg_fp.x = s.first_point.x;
     seg_fp.y = s.first_point.y;
-    seg_fp.z = 0;
+    seg_fp.z = s.first_point.z;
     auto seg_lp = geometry_msgs::msg::Point();
     seg_lp.x = s.last_point.x;
     seg_lp.y = s.last_point.y;
-    seg_lp.z = 0;
+    seg_lp.z = s.last_point.z;
     seg_marker.points.push_back(seg_fp);
     seg_marker.points.push_back(seg_lp);
 
@@ -501,7 +506,7 @@ void ObstacleExtractor::publishVisualizationObstacles(){
         
         circ_marker.pose.position.x = c.center.x;
         circ_marker.pose.position.y = c.center.y;
-        circ_marker.pose.position.z = 0;
+        circ_marker.pose.position.z = c.center.z;
 
         circ_marker.pose.orientation.x = 0.0;
         circ_marker.pose.orientation.y = 0.0;
@@ -568,8 +573,10 @@ void ObstacleExtractor::publishObstacles() {
     obstacle_detector::msg::SegmentObstacle segment;
     segment.first_point.x = s.first_point.x;
     segment.first_point.y = s.first_point.y;
+    segment.first_point.z = s.first_point.z;
     segment.last_point.x = s.last_point.x;
     segment.last_point.y = s.last_point.y;
+    segment.last_point.z = s.last_point.z;
 
     obstacles_msg.segments.push_back(segment);
   }
@@ -581,6 +588,7 @@ void ObstacleExtractor::publishObstacles() {
 
         circle.center.x = c.center.x;
         circle.center.y = c.center.y;
+        circle.center.z = c.center.z;
         circle.velocity.x = 0.0;
         circle.velocity.y = 0.0;
         circle.radius = c.radius;

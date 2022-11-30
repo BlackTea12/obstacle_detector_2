@@ -44,8 +44,8 @@ namespace obstacle_detector
 class Point
 {
 public:
-  Point(double x = 0.0, double y = 0.0, double range = 0.0) : x(x), y(y), range(range) {}
-  Point(const Point& p) : x(p.x), y(p.y), range(p.range) {}
+  Point(double x = 0.0, double y = 0.0, double range = 0.0, double z = 0.0) : x(x), y(y), range(range), z(z) {}
+  Point(const Point& p) : x(p.x), y(p.y), range(p.range), z(p.z) {}
   static Point fromPoolarCoords(const double r, const double phi) { return Point(r * cos(phi), r * sin(phi)); }
 
   double getRange()      const { return range > 0.0 ? range : length(); }
@@ -58,18 +58,18 @@ public:
 
   Point normalized() { return (length() > 0.0) ? *this / length() : *this; }
   Point reflected(const Point& normal) const { return *this - 2.0 * normal * (normal.dot(*this)); }
-  Point perpendicular() const { return Point(-y, x); }
+  Point perpendicular() const { return Point(-y, x, 0., z); }
 
-  friend Point operator+ (const Point& p1, const Point& p2) { return Point(p1.x + p2.x, p1.y + p2.y); }
-  friend Point operator- (const Point& p1, const Point& p2) { return Point(p1.x - p2.x, p1.y - p2.y); }
-  friend Point operator* (const double f, const Point& p)  { return Point(f * p.x, f * p.y); }
-  friend Point operator* (const Point& p, const double f)  { return Point(f * p.x, f * p.y); }
-  friend Point operator/ (const Point& p, const double f)  { return (f != 0.0) ? Point(p.x / f, p.y / f) : Point(); }
+  friend Point operator+ (const Point& p1, const Point& p2) { return Point(p1.x + p2.x, p1.y + p2.y, 0., p1.z); }
+  friend Point operator- (const Point& p1, const Point& p2) { return Point(p1.x - p2.x, p1.y - p2.y, 0., p1.z); }
+  friend Point operator* (const double f, const Point& p)  { return Point(f * p.x, f * p.y, 0., p.z); }
+  friend Point operator* (const Point& p, const double f)  { return Point(f * p.x, f * p.y, 0., p.z); }
+  friend Point operator/ (const Point& p, const double f)  { return (f != 0.0) ? Point(p.x / f, p.y / f, 0., p.z) : Point(); }
 
-  Point operator- () { return Point(-x, -y); }
-  Point operator+ () { return Point( x,  y); }
+  Point operator- () { return Point(-x, -y, 0, z); }
+  Point operator+ () { return Point( x,  y, 0, z); }
 
-  Point& operator=  (const Point& p) { if (this != &p) { x = p.x; y = p.y; } return *this; }
+  Point& operator=  (const Point& p) { if (this != &p) { x = p.x; y = p.y; range = p.range; z = p.z;} return *this; }
   Point& operator+= (const Point& p) { x += p.x; y += p.y; return *this; }
   Point& operator-= (const Point& p) { x -= p.x; y -= p.y; return *this; }
 
@@ -82,10 +82,11 @@ public:
   friend bool operator!  (const Point& p1) { return (p1.x == 0.0 && p1.y == 0.0); }
 
   friend std::ostream& operator<<(std::ostream& out, const Point& p)
-  { out << "(" << p.x << ", " << p.y << ") with range " << p.range << " to origin"; return out; }
+  { out << "(" << p.x << ", " << p.y << ", " << p.z << ") with range " << p.getRange() << " to origin"; return out; }
 
   double x;
   double y;
+  double z;
   double range = 0.0; // Distance w.r.t. lidar scan origin
 };
 

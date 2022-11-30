@@ -92,9 +92,11 @@ Segment fitSegment(const PointSet& point_set) {
 
     projected_p1.x = ( B * B * p1.x - A * B * p1.y - A * C) / D;
     projected_p1.y = (-A * B * p1.x + A * A * p1.y - B * C) / D;
+    projected_p1.z = p1.z;
 
     projected_p2.x = ( B * B * p2.x - A * B * p2.y - A * C) / D;
     projected_p2.y = (-A * B * p2.x + A * A * p2.y - B * C) / D;
+    projected_p2.z = p2.z;
 
     segment.first_point = projected_p1;
     segment.last_point = projected_p2;
@@ -152,9 +154,11 @@ Segment fitSegment(const std::vector<PointSet>& point_sets) {
 
     projected_p1.x = ( B * B * p1.x - A * B * p1.y - A * C) / D;
     projected_p1.y = (-A * B * p1.x + A * A * p1.y - B * C) / D;
+    projected_p1.z = p1.z;
 
     projected_p2.x = ( B * B * p2.x - A * B * p2.y - A * C) / D;
     projected_p2.y = (-A * B * p2.x + A * A * p2.y - B * C) / D;
+    projected_p2.z = p2.z;
 
     segment.first_point = projected_p1;
     segment.last_point = projected_p2;
@@ -182,10 +186,13 @@ Circle fitCircle(const std::list<Point>& point_set)
   arma::vec params = arma::vec(3).zeros();      // [a_1 ; a_2 ; a_3]
 
   int i = 0;
+  Point last_point;
   for (const Point& point : point_set) {
     input(i, 0) = point.x;
     input(i, 1) = point.y;
     input(i, 2) = 1.0;
+
+    last_point = point;
 
     output(i) = -(pow(point.x, 2) + pow(point.y, 2));
     i++;
@@ -194,7 +201,7 @@ Circle fitCircle(const std::list<Point>& point_set)
   // Find a_1, a_2 and a_3 coefficients from linear regression
   params = arma::pinv(input) * output;
 
-  Point center(-params(0) / 2.0, -params(1) / 2.0);
+  Point center(-params(0) / 2.0, -params(1) / 2.0, 0., last_point.x);
   double radius =  sqrt((params(0) * params(0) + params(1) * params(1)) / 4.0 - params(2));
 
   return Circle(center, radius);

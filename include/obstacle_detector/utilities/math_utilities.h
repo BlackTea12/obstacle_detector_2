@@ -72,6 +72,7 @@ inline geometry_msgs::msg::Point transformPoint(const geometry_msgs::msg::Point&
 
   p.x = point.x * cos(theta) - point.y * sin(theta) + x;
   p.y = point.x * sin(theta) + point.y * cos(theta) + y;
+  p.z = point.z;
 
   return p;
 }
@@ -81,6 +82,7 @@ inline geometry_msgs::msg::Point32 transformPoint(const geometry_msgs::msg::Poin
 
   p.x = point.x * cos(theta) - point.y * sin(theta) + x;
   p.y = point.x * sin(theta) + point.y * cos(theta) + y;
+  p.z = point.z;
 
   return p;
 }
@@ -90,6 +92,7 @@ inline Point transformPoint(const Point point, double x, double y, double theta)
 
   p.x = point.x * cos(theta) - point.y * sin(theta) + x;
   p.y = point.x * sin(theta) + point.y * cos(theta) + y;
+  p.z = point.z;
 
   return p;
 }
@@ -98,9 +101,9 @@ inline Point transformPoint(const Point& point, const geometry_msgs::msg::Transf
   geometry_msgs::msg::Pose pose;
   pose.position.x = point.x;
   pose.position.y = point.y;
-  pose.position.z = 0;
+  pose.position.z = point.z;
   tf2::doTransform(pose, pose, transform);
-  return {pose.position.x, pose.position.y};
+  return {pose.position.x, pose.position.y, 0., pose.position.z};
 }
 
 inline bool checkPointInLimits(const geometry_msgs::msg::Point32& p, double x_min, double x_max, double y_min, double y_max) {

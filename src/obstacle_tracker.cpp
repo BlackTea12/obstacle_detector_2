@@ -573,6 +573,8 @@ void ObstacleTracker::fuseObstacles(const vector<int>& fusion_indices, const vec
   for (int idx : fusion_indices) {
     c.center.x += tracked_circle_obstacles_[idx].getObstacle().center.x / tracked_circle_obstacles_[idx].getKFx().P(0,0);
     c.center.y += tracked_circle_obstacles_[idx].getObstacle().center.y / tracked_circle_obstacles_[idx].getKFy().P(0,0);
+    // assume z coordinate of obstacles never changes
+    c.center.z = tracked_circle_obstacles_[idx].getObstacle().center.z;
     c.velocity.x += tracked_circle_obstacles_[idx].getObstacle().velocity.x / tracked_circle_obstacles_[idx].getKFx().P(1,1);
     c.velocity.y += tracked_circle_obstacles_[idx].getObstacle().velocity.y / tracked_circle_obstacles_[idx].getKFy().P(1,1);
     c.radius += tracked_circle_obstacles_[idx].getObstacle().radius / tracked_circle_obstacles_[idx].getKFr().P(0,0);
@@ -614,8 +616,11 @@ void ObstacleTracker::fuseObstacles(const vector<int>& fusion_indices, const vec
   for (int idx : fusion_indices) {
     c.first_point.x += tracked_segment_obstacles_[idx].getObstacle().first_point.x / tracked_segment_obstacles_[idx].getKFx1().P(0,0);
     c.first_point.y += tracked_segment_obstacles_[idx].getObstacle().first_point.y / tracked_segment_obstacles_[idx].getKFy1().P(0,0);
+    // assume z coordinate of obstacles never changes
+    c.first_point.z = tracked_segment_obstacles_[idx].getObstacle().first_point.z;
     c.last_point.x += tracked_segment_obstacles_[idx].getObstacle().last_point.x / tracked_segment_obstacles_[idx].getKFx2().P(0,0);
     c.last_point.y += tracked_segment_obstacles_[idx].getObstacle().last_point.y / tracked_segment_obstacles_[idx].getKFy2().P(0,0);
+    c.last_point.z = tracked_segment_obstacles_[idx].getObstacle().last_point.z;
     c.first_velocity.x += tracked_segment_obstacles_[idx].getObstacle().first_velocity.x / tracked_segment_obstacles_[idx].getKFx1().P(1,1);
     c.first_velocity.y += tracked_segment_obstacles_[idx].getObstacle().first_velocity.y / tracked_segment_obstacles_[idx].getKFy1().P(1,1);
     c.last_velocity.x += tracked_segment_obstacles_[idx].getObstacle().last_velocity.x / tracked_segment_obstacles_[idx].getKFx2().P(1,1);
@@ -765,7 +770,7 @@ visualization_msgs::msg::Marker ObstacleTracker::getMarkerCircle(obstacle_detect
     circ_marker.ns = "tracked_obstacles_blobs";
     auto scale = ob.true_radius;
     // debug: min scale for better visualization
-    // if (scale < 0.2) scale = 0.2;
+    if (scale < 0.2) scale = 0.2;
     circ_marker.scale.x = circ_marker.scale.y = scale;
     circ_marker.scale.z = 0.01;
     circ_marker.type = visualization_msgs::msg::Marker::CYLINDER;
@@ -773,7 +778,7 @@ visualization_msgs::msg::Marker ObstacleTracker::getMarkerCircle(obstacle_detect
     circ_marker.pose.position.x = ob.center.x;
     circ_marker.pose.position.y = ob.center.y;
     // tracked obstacles are a bit higher than the raw ones, so that they can be visualized together
-    circ_marker.pose.position.z = 0.1;
+    circ_marker.pose.position.z = ob.center.z + 0.1;
     return circ_marker;
 }
 
@@ -809,11 +814,11 @@ visualization_msgs::msg::Marker ObstacleTracker::getMarkerSegment(obstacle_detec
     auto seg_fp = geometry_msgs::msg::Point();
     seg_fp.x = ob.first_point.x;
     seg_fp.y = ob.first_point.y;
-    seg_fp.z = 0.1;
+    seg_fp.z = ob.first_point.z + 0.1;
     auto seg_lp = geometry_msgs::msg::Point();
     seg_lp.x = ob.last_point.x;
     seg_lp.y = ob.last_point.y;
-    seg_lp.z = 0.1;
+    seg_lp.z = ob.last_point.z + 0.1;
     seg_marker.points.push_back(seg_fp);
     seg_marker.points.push_back(seg_lp);
     return seg_marker;
@@ -843,9 +848,11 @@ void ObstacleTracker::publishVisualizationObstacles() {
     obstacle_detector::msg::CircleObstacle ob = tracked_circle_obstacle.getObstacle();
     auto circ_marker = getMarkerCircle(ob);
     auto text_marker = getMarkerText(ob.uid);
+    text_marker.pose.position.z += ob.center.z;
     text_marker.pose.position.x = ob.center.x;
     text_marker.pose.position.y = ob.center.y;
     auto arrow_vel = getMarkerVelocityArrow(ob.uid, ob.center.x, ob.center.y, ob.velocity.x, ob.velocity.y);
+    arrow_vel.pose.position.z += ob.center.z;
     obstacles_vis_msg.markers.push_back(circ_marker);
     obstacles_vis_msg.markers.push_back(text_marker);
     obstacles_vis_msg.markers.push_back(arrow_vel);
@@ -859,9 +866,11 @@ void ObstacleTracker::publishVisualizationObstacles() {
     double py = (ob.first_point.y + ob.last_point.y)/2.0;
     double vx = (ob.first_velocity.x + ob.last_velocity.x)/2.0;
     double vy = (ob.first_velocity.y + ob.last_velocity.y)/2.0;
+    text_marker.pose.position.z += ob.first_point.z;
     text_marker.pose.position.x = px;
     text_marker.pose.position.y = py;
     auto arrow_vel = getMarkerVelocityArrow(ob.uid, px, py, vx, vy);
+    arrow_vel.pose.position.z += ob.first_point.z;
     obstacles_vis_msg.markers.push_back(seg_marker);
     obstacles_vis_msg.markers.push_back(text_marker);
   }
