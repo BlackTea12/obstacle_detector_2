@@ -2,7 +2,6 @@
 <launch>
 
   <node name="obstacle_extractor" pkg="obstacle_detector" exec="obstacle_extractor_node">
-    <remap from="/scan" to="/merged_scan" />
     <remap from="/pcl" to="/scan_filtered" />
     <remap from="/pcl2" to="/ScanMergeNode/scan_merged" />
     <param name="active"               value="true"/>
