@@ -62,12 +62,6 @@ ament_target_dependencies(obstacle_publisher ${PROJECT_DEPENDS})
 rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
 target_link_libraries(obstacle_publisher "${cpp_typesupport_target}")
 
-#
-# Build nodes
-#
-# add_executable(scans_merger_node src/nodes/scans_merger_node.cpp)
-# target_link_libraries(scans_merger_node scans_merger)
-
 add_executable(obstacle_extractor_node src/nodes/obstacle_extractor_node.cpp)
 target_link_libraries(obstacle_extractor_node obstacle_extractor)
 
@@ -77,66 +71,20 @@ target_link_libraries(obstacle_tracker_node obstacle_tracker)
 add_executable(obstacle_publisher_node src/nodes/obstacle_publisher_node.cpp)
 target_link_libraries(obstacle_publisher_node obstacle_publisher)
 
-#
-# Build nodelets
-# 
-# add_library(${PROJECT_NAME}_nodelets
-#   src/nodelets/scans_merger_nodelet.cpp
-#   src/nodelets/obstacle_extractor_nodelet.cpp
-#   src/nodelets/obstacle_tracker_nodelet.cpp
-#   src/nodelets/obstacle_publisher_nodelet.cpp)
-# target_link_libraries(${PROJECT_NAME}_nodelets scans_merger obstacle_extractor obstacle_tracker obstacle_publisher)
-
-# ament_export_targets(my_libraryTargets HAS_LIBRARY_TARGET)
-# ament_export_dependencies(some_dependency)
-
-
-#
-# Install libraries
-#
-# install(TARGETS scans_merger obstacle_extractor obstacle_tracker obstacle_publisher ${PROJECT_NAME}_nodelets ${PROJECT_NAME}_gui
-#   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
-
 install(TARGETS obstacle_extractor obstacle_tracker obstacle_publisher
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-#
-# Install nodes
-#
-# install(TARGETS scans_merger_node obstacle_extractor_node obstacle_tracker_node obstacle_publisher_node
-#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 install(TARGETS obstacle_extractor_node obstacle_tracker_node obstacle_publisher_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-## Mark other files for installation (e.g. launch and bag files, etc.)
 install(
   DIRECTORY
-  launch
+  launch config rviz
   DESTINATION share/${PROJECT_NAME}/
 )
-
-#
-# Install header files
-# #
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
-
-# #
-# # Install nodelet and rviz plugins description
-# #
-# install(FILES nodelet_plugins.xml rviz_plugins.xml
-#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
-
-#
-# Create folders and copy resources
-#
-# file(MAKE_DIRECTORY $ENV{HOME}/.local/share/icons/robor)
-# file(COPY resources/play.png resources/stop.png DESTINATION $ENV{HOME}/.local/share/icons/robor)
 
 ament_package()

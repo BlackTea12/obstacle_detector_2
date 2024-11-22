@@ -1,0 +1,12 @@
+obstacle_tracker:
+  ros__parameters:
+    use_sim_time: True
+    active: True
+    loop_rate: 100.0
+    tracking_duration: 2.0
+    min_correspondence_cost: 0.6
+    std_correspondence_dev: 0.15
+    process_variance: 0.1
+    process_rate_variance: 0.1
+    measurement_variance: 1.0
+    frame_id: "hey"
