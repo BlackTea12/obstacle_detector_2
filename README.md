@@ -1,4 +1,4 @@
-# ROS2 obstacle detector and tracker (ROS2 Humble)
+# obstacle detector and tracker 
 <div align="left">
 
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04-green)
