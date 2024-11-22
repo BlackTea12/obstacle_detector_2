@@ -13,6 +13,11 @@ For detailed description about understanding how obstacle is detected and tracke
 
 ## How to use
 
+### Obstacle tracker and extractor
+```
+ros2 launch obstacle_detector start_all_launch.py
+```
+
 ### Obstacle tracker
 ```
 ros2 launch obstacle_detector start_extractor_launch.py
