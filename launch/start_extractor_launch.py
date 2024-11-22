@@ -51,12 +51,12 @@ def generate_launch_description():
   param_substitutions = {}
   
   configured_params = ParameterFile(
-      RewrittenYaml(
-          source_file=params_file,
-          root_key=namespace,
-          param_rewrites=param_substitutions,
-          convert_types=True),
-      allow_substs=True)
+    RewrittenYaml(
+      source_file=params_file,
+      root_key=namespace,
+      param_rewrites=param_substitutions,
+      convert_types=True),
+    allow_substs=True)
   
   bringup_node_group = GroupAction([
     PushRosNamespace(
