@@ -9,4 +9,4 @@ obstacle_tracker:
     process_variance: 0.1
     process_rate_variance: 0.1
     measurement_variance: 1.0
-    frame_id: "hey"
+    frame_id: "map"
